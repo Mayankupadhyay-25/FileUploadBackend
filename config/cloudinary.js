@@ -1,15 +1,14 @@
-const cloudinary = requier("cloudinary").v2;
+const cloudinary = require("cloudinary").v2;
 
-exports.cloudinaryconnect = () =>  {
-    try{
+exports.cloudinaryconnect = () => {
+    try {
         cloudinary.config({
-            cloude_name:process.env.CLOUD_NAME,
+            cloud_name: process.env.CLOUD_NAME,
             api_key: process.env.API_KEY,
-            api_secret: process.env.API_SECREAT,
-
-        })
+            api_secret: process.env.API_SECRET,
+        });
+        console.log('Cloudinary configured');
+    } catch (error) {
+        console.error('Cloudinary configuration error:', error);
     }
-catch(error){
-    console.log(error);
-}
-}
+};
