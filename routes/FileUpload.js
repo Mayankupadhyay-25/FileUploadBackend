@@ -3,10 +3,8 @@ const router = express.Router();
 
 const { localFileUpload } = require("../controllers/fileUpload");
 
-//api route
-//api route
+// api routes
 router.post("/localFileUpload", localFileUpload);
-// alias for clients using the misspelled path
-
+router.post("/imageUpload", localFileUpload);
 
 module.exports = router;
