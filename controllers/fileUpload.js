@@ -1,6 +1,7 @@
 const File = require("../models/File");
 const fs = require('fs');
 const path = require('path');
+const cloudinary = require("cloudinary").v2;
 
 // localFileUpload -> handler function
 exports.localFileUpload = async (req, res) => {
@@ -53,4 +54,59 @@ exports.localFileUpload = async (req, res) => {
         console.error('Not able to upload the file on server', error);
         return res.status(500).json({ success: false, message: 'Server Error' });
     }
-};
+    
+}
+async function uploadFileToCloudinary(file, folder){
+    const options = {folder};
+    console.log("tempt file path", file.tempFilePath);
+    return await cloudinary.uploader.upload(file.tempFilePath, option)
+}
+
+//image uplode ka hadnler
+exports.imageUpload = async (req , res) =>{
+    try{
+        //data fetch 
+        const { name, tags, email} = req.body;
+        console.log(name,tags,email);
+
+        const file = req.files.imageFile;
+        console.log(file);
+
+        //validetion 
+        const supportedType = ["jpg", "jpeg", "png"];
+        const fileType = file.name.split('.')[1].toLowerCase();
+
+        if(!isFileTypeSupported(fileType, supportedTypes)){
+            return res.status(400).json({
+                success:false,
+                message:'file formet not supported',
+            })
+        }
+
+        //file formet supported hai
+        const responce = await uploadFileToCloudinary(file,"CodeHelp");
+        console.log(responce);
+
+        //db me entry save krni hai
+        // const fileData = await file.creat({
+        //     name,
+        //     tags,
+        //     email,
+        //     imageUrl
+        // })
+
+        res.json({
+            success:true,
+            message:'Image Successfully Uploaded'
+        })
+
+    }
+    catch(error){
+        console.error(error);
+        res.status(400).json({
+            success:false,
+            message:'someting went wrong'
+        })
+
+    }
+}
