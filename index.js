@@ -9,7 +9,10 @@ const app = express();
  //middleware add krne hai 
  app.use(express.json());
 const fileUpload = require("express-fileupload");
-app.use(fileUpload());
+app.use(fileUpload({
+   useTempFiles : true,
+   tempFileDir:"/tmp"
+}));
 
  //db connect kena 
  const db = require('./config/database');
