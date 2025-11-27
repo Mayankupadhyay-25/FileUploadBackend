@@ -42,7 +42,7 @@ fileSchema.post("save", async function (doc){
         console.log("INFO",info);
 
     }
-    catch{
+    catch(error){
         console.error(error);
 
     }
