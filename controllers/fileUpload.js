@@ -3,7 +3,6 @@ const fs = require('fs');
 const path = require('path');
 const cloudinary = require("cloudinary").v2;
 
-
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
@@ -16,17 +15,26 @@ function isFileTypeSupported(fileType, supportedTypes = []) {
   return supportedTypes.includes(fileType.toLowerCase());
 }
 
+// Helper: safely get file from req
+function getUploadedFile(req, fields = ['file', 'image', 'imageFile', 'videoFile', 'upload']) {
+  if (!req.files) return null;
+  for (let f of fields) {
+    if (req.files[f]) return req.files[f];
+  }
+  // fallback: first file present
+  const first = Object.values(req.files)[0];
+  return first || null;
+}
+
 async function uploadFileToCloudinary(file, folder) {
-  const options = { folder };
+  const options = { folder, resource_type: "auto" };
 
   console.log("temp file path:", file && file.tempFilePath);
 
-  // prefer tempFilePath (express-fileupload with useTempFiles: true)
   if (file && file.tempFilePath) {
     return await cloudinary.uploader.upload(file.tempFilePath, options);
   }
 
-  // fallback: upload from buffer (if useTempFiles: false)
   if (file && file.data) {
     const base64 = file.data.toString('base64');
     const dataUri = `data:${file.mimetype};base64,${base64}`;
@@ -36,114 +44,143 @@ async function uploadFileToCloudinary(file, folder) {
   throw new Error('No file.tempFilePath or file.data available for upload');
 }
 
-// localFileUpload -> handler function
+// -------------------- LOCAL FILE UPLOAD --------------------
 exports.localFileUpload = async (req, res) => {
   try {
-    console.log('req.files:', req.files);
-    console.log('req.body:', req.body);
+    console.log("req.files:", req.files);
 
-    if (!req.files || Object.keys(req.files).length === 0) {
-      return res.status(400).json({ success: false, message: 'No files uploaded' });
-    }
-
-    // Try common field names: file, image, upload or take first file
-    const file = req.files.file || req.files.image || req.files.upload || Object.values(req.files)[0];
+    const file = getUploadedFile(req);
 
     if (!file) {
       return res.status(400).json({
         success: false,
-        message: 'No file field found',
-        availableFields: Object.keys(req.files)
+        message: "No file uploaded",
+        availableFields: Object.keys(req.files || {})
       });
     }
-    console.log('Received file:', file.name || file);
 
-    // upload directory (folder next to this controller named 'file')
-    const uploadDir = path.join(__dirname, 'file');
+    const uploadDir = path.join(__dirname, "file");
 
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
-      console.log('Created upload directory:', uploadDir);
     }
 
-    // Create filename with proper extension (no extra spaces)
-    const ext = path.extname(file.name) || '';
+    const ext = path.extname(file.name || "");
     const filename = `${Date.now()}${ext}`;
     const destPath = path.join(uploadDir, filename);
-    console.log('DEST PATH->', destPath);
 
     file.mv(destPath, (err) => {
       if (err) {
-        console.error('File move error:', err);
-        return res.status(500).json({ success: false, message: 'File move failed', error: err.message });
+        console.error("File move error:", err);
+        return res.status(500).json({
+          success: false,
+          message: "File move failed",
+          error: err.message,
+        });
       }
 
-      return res.json({
+      res.json({
         success: true,
-        message: 'Local File Uploaded Successfully',
-        file: { path: destPath, name: filename }
+        message: "Local File Uploaded Successfully",
+        file: { path: destPath, name: filename },
       });
     });
   } catch (error) {
-    console.error('Not able to upload the file on server', error);
-    return res.status(500).json({ success: false, message: 'Server Error', error: error.message });
+    console.error("Local upload error:", error);
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
-// image upload handler
+// -------------------- IMAGE UPLOAD --------------------
 exports.imageUpload = async (req, res) => {
   try {
-    // data fetch
     const { name, tags, email } = req.body;
-    console.log('name, tags, email ->', name, tags, email);
+    console.log("name, tags, email ->", name, tags, email);
 
-    const file = req.files && (req.files.imageFile || req.files.file || Object.values(req.files)[0]);
+    const file = getUploadedFile(req, ["imageFile", "image", "file"]);
+
     if (!file) {
-      return res.status(400).json({ success: false, message: 'No image file provided' });
+      return res.status(400).json({
+        success: false,
+        message: "No image file provided",
+        availableFields: Object.keys(req.files || {})
+      });
     }
-    console.log('file object ->', file);
 
-    // validation: supported types
     const supportedTypes = ["jpg", "jpeg", "png"];
-
-    // safer filetype extraction using path.extname
-    const ext = path.extname(file.name || '').toLowerCase(); // e.g. '.jpg'
-    const fileType = ext ? ext.slice(1) : ''; // remove the dot
+    const ext = path.extname(file.name || "").toLowerCase();
+    const fileType = ext ? ext.slice(1) : "";
 
     if (!isFileTypeSupported(fileType, supportedTypes)) {
       return res.status(400).json({
         success: false,
-        message: 'File format not supported. Supported: ' + supportedTypes.join(', ')
+        message: "File format not supported. Supported: " + supportedTypes.join(", "),
       });
     }
 
-    // upload to cloudinary (folder CodeHelp)
     const response = await uploadFileToCloudinary(file, "CodeHelp");
-    console.log('Cloudinary response ->', response);
-
-    // Optionally save to DB. Example:
-    // const fileData = await File.create({
-    //   name,
-    //   tags,
-    //   email,
-    //   imageUrl: response.secure_url,
-    //   public_id: response.public_id,
-    // });
 
     res.json({
       success: true,
-      message: 'Image Successfully Uploaded',
+      message: "Image Successfully Uploaded",
       data: {
         url: response.secure_url,
         public_id: response.public_id,
-      }
+      },
+    });
+  } catch (error) {
+    console.error("imageUpload error:", error);
+    res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+// -------------------- VIDEO UPLOAD --------------------
+exports.videoUpload = async (req, res) => {
+  try {
+    const { name, tags, email } = req.body;
+    console.log(name, tags, email);
+
+    const file = getUploadedFile(req, ["videoFile", "file"]);
+
+    if (!file) {
+      return res.status(400).json({
+        success: false,
+        message: "No video file provided",
+        availableFields: Object.keys(req.files || {})
+      });
+    }
+
+    const supportedTypes = ["mp4", "mov"];
+    const ext = path.extname(file.name || "").toLowerCase();
+    const fileType = ext ? ext.slice(1) : "";
+
+    if (!isFileTypeSupported(fileType, supportedTypes)) {
+      return res.status(400).json({
+        success: false,
+        message: "File format not supported. Supported: " + supportedTypes.join(", "),
+      });
+    }
+
+    const response = await uploadFileToCloudinary(file, "CodeHelp");
+
+    await File.create({
+      name,
+      tags,
+      email,
+      imageUrl: response.secure_url,
+      public_id: response.public_id,
     });
 
-  } catch (error) {
-    console.error('imageUpload error:', error);
-    res.status(400).json({
-      success: false,
-      message: error.message || 'Upload failed'
+    res.json({
+      success: true,
+      message: "Video Successfully Uploaded",
+      data: {
+        url: response.secure_url,
+        public_id: response.public_id,
+      },
     });
+  } catch (error) {
+    console.error(error);
+    res.status(400).json({ message: error.message });
   }
 };
